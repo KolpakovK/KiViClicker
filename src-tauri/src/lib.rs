@@ -124,7 +124,37 @@ fn start_clicker(notes: Vec<NoteEvent>) -> Result<(), String> {
         println!("Clicker thread started");
         let start_time = std::time::Instant::now();
         
-        for note in notes.iter() {
+        // Создаем события: нажатия и отпускания
+        #[derive(Debug, Clone)]
+        struct KeyEvent {
+            time_ms: u64,
+            key: char,
+            is_press: bool,
+        }
+        
+        let mut events: Vec<KeyEvent> = Vec::new();
+        
+        // Генерируем события нажатия и отпускания
+        for note in &notes {
+            if let Some(ch) = note.key.chars().next() {
+                events.push(KeyEvent {
+                    time_ms: note.time_ms,
+                    key: ch,
+                    is_press: true,
+                });
+                events.push(KeyEvent {
+                    time_ms: note.time_ms + note.duration_ms,
+                    key: ch,
+                    is_press: false,
+                });
+            }
+        }
+        
+        // Сортируем по времени
+        events.sort_by_key(|e| e.time_ms);
+        
+        // Воспроизводим события
+        for event in events {
             {
                 let state = clicker_state.lock().unwrap();
                 if !state.is_running {
@@ -133,27 +163,21 @@ fn start_clicker(notes: Vec<NoteEvent>) -> Result<(), String> {
                 }
             }
             
-            // Ждем до времени ноты
-            let target_time = Duration::from_millis(note.time_ms);
+            let target_time = Duration::from_millis(event.time_ms);
             let elapsed = start_time.elapsed();
             
             if target_time > elapsed {
                 thread::sleep(target_time - elapsed);
             }
             
-            println!("Pressing key '{}' at {}ms for {}ms", note.key, note.time_ms, note.duration_ms);
-
             #[cfg(windows)]
             {
-                if let Some(ch) = note.key.chars().next() {
-                    // Нажимаем клавишу
-                    press_key_native(ch);
-                    
-                    // Держим нажатой
-                    thread::sleep(Duration::from_millis(note.duration_ms));
-                    
-                    // Отпускаем
-                    release_key_native(ch);
+                if event.is_press {
+                    println!("Press '{}' at {}ms", event.key, event.time_ms);
+                    press_key_native(event.key);
+                } else {
+                    println!("Release '{}' at {}ms", event.key, event.time_ms);
+                    release_key_native(event.key);
                 }
             }
         }
